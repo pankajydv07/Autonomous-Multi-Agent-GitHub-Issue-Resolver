@@ -55,6 +55,7 @@ async def run(state: AgentState, llm_client: LLMClient) -> AgentState:
         accumulated = ""
 
         async def on_token(token: str):
+            nonlocal accumulated
             accumulated += token
             state.emit_progress("planner", "thinking", token)
 
@@ -78,9 +79,7 @@ async def run(state: AgentState, llm_client: LLMClient) -> AgentState:
             state.plan = content
             state.complexity = "simple"
 
-        state.add_log(
-            "planner", f"Plan generated with complexity: {state.complexity}"
-        )
+        state.add_log("planner", f"Plan generated with complexity: {state.complexity}")
 
     except Exception as e:
         logger.exception("planner_error", error=str(e))

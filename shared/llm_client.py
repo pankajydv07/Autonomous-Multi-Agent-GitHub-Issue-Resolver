@@ -68,7 +68,9 @@ class LLMClient:
                     usage=data.get("usage"),
                 )
             except httpx.HTTPStatusError as e:
-                logger.warning("llm_http_error", attempt=attempt, status=e.response.status_code)
+                logger.warning(
+                    "llm_http_error", attempt=attempt, status=e.response.status_code
+                )
                 if attempt == self.config.max_retries - 1:
                     raise
             except httpx.RequestError as e:
@@ -101,7 +103,9 @@ class LLMClient:
         if max_tokens:
             payload["max_tokens"] = max_tokens
 
-        async with self.client.stream("POST", "chat/completions", json=payload) as response:
+        async with self.client.stream(
+            "POST", "chat/completions", json=payload
+        ) as response:
             response.raise_for_status()
             accumulated_content = ""
 
@@ -117,7 +121,12 @@ class LLMClient:
                         if token:
                             accumulated_content += token
                             if on_token:
-                                on_token(token)
+                                import inspect
+
+                                if inspect.iscoroutinefunction(on_token):
+                                    await on_token(token)
+                                else:
+                                    on_token(token)
                             yield token
                     except json.JSONDecodeError:
                         continue

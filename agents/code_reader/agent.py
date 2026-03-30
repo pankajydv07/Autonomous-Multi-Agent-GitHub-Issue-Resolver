@@ -64,7 +64,11 @@ def find_relevant_files(repo_dir: Path, issue: str) -> list[str]:
                 relevant.append(str(file.relative_to(repo_dir)))
 
     if not relevant:
-        relevant = [str(f.relative_to(repo_dir)) for f in repo_dir.rglob("*.py")[:10]]
+        relevant = []
+        for i, f in enumerate(repo_dir.rglob("*.py")):
+            if i >= 10:
+                break
+            relevant.append(str(f.relative_to(repo_dir)))
 
     return relevant[:15]
 

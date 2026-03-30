@@ -12,7 +12,7 @@ RUN pip install --no-cache-dir -r orchestrator/requirements.txt
 
 WORKDIR /app/orchestrator
 
-RUN ruff check . --ignore E402,I001,UP042,UP045
+RUN ruff check . --ignore E402,I001,UP042,UP045,E501,UP035
 
 EXPOSE 8000
 

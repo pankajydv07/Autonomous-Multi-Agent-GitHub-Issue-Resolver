@@ -28,6 +28,7 @@ export const typeDefs = `#graphql
     updatedAt: String!
     state: AgentState
     taskLogs: [TaskLog!]!
+    logs: [TaskLog!]!
   }
 
   type AgentState {

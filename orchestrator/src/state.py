@@ -1,8 +1,10 @@
 from datetime import datetime
 from enum import Enum
+import asyncio
+import inspect
 from typing import Any, Callable, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 
 class RunStatus(str, Enum):
@@ -44,7 +46,7 @@ class AgentState(BaseModel):
     progress_events: list[dict[str, Any]] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
-    _progress_callback: Optional[Callable[[AgentProgress], Any]] = Field(default=None, exclude=True)
+    _progress_callback: Optional[Callable[[AgentProgress], Any]] = PrivateAttr(default=None)
 
     def set_progress_callback(self, callback: Callable[[AgentProgress], Any]) -> None:
         self._progress_callback = callback
@@ -59,7 +61,13 @@ class AgentState(BaseModel):
         self.progress_events.append(event.model_dump())
         self.updated_at = datetime.utcnow()
         if self._progress_callback:
-            self._progress_callback(event)
+            callback_result = self._progress_callback(event)
+            if inspect.isawaitable(callback_result):
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(callback_result)
+                except RuntimeError:
+                    asyncio.run(callback_result)
 
     def add_log(self, agent: str, message: str) -> None:
         self.logs.append(
