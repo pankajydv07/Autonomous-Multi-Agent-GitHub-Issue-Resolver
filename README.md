@@ -6,7 +6,7 @@
 
 An intelligent, autonomous system that leverages multiple AI agents to analyze, plan, and resolve GitHub issues automatically. Built with a modular multi-agent architecture integrating LLMs (OpenAI/Anthropic) with GitHub's API.
 
-![alt text](../diagram-export-3-30-2026-2_45_41-PM.png)
+![diagram-export-3-30-2026-2_45_41-PM.png](../diagram-export-3-30-2026-2_45_41-PM.png)git
 ## 📋 Table of Contents
 
 - [Overview](#overview)
