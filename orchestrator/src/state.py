@@ -44,7 +44,7 @@ class AgentState(BaseModel):
     progress_events: list[dict[str, Any]] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
-    _progress_callback: Optional[Callable[[AgentProgress], Any]] = Field(default=None, exclude=True)
+    _progress_callback: Optional[Callable[[AgentProgress], Any]] = None
 
     def set_progress_callback(self, callback: Callable[[AgentProgress], Any]) -> None:
         self._progress_callback = callback

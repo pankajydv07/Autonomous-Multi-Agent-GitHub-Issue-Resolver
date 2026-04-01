@@ -1,22 +1,22 @@
 version: "3.8"
 
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: agent-orchestrator-postgres
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: pankaj
-      POSTGRES_DB: agent_orchestrator
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+#   postgres:
+#     image: postgres:16-alpine
+#     container_name: agent-orchestrator-postgres
+#     environment:
+#       POSTGRES_USER: postgres
+#       POSTGRES_PASSWORD: pankaj
+#       POSTGRES_DB: agent_orchestrator
+#     ports:
+#       - "5432:5432"
+#     volumes:
+#       - postgres_data:/var/lib/postgresql/data
+#     healthcheck:
+#       test: ["CMD-SHELL", "pg_isready -U postgres"]
+#       interval: 5s
+#       timeout: 5s
+#       retries: 5
 
   redis:
     image: redis:7-alpine
@@ -39,14 +39,12 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql://postgres:pankaj@postgres:5432/agent_orchestrator
+      DATABASE_URL: postgresql://postgres:ankush@host.docker.internal:5432/agent_orchestrator?schema=public
       REDIS_HOST: redis
       REDIS_PORT: 6379
       NEBIUS_API_KEY: ${NEBIUS_API_KEY}
       GITHUB_TOKEN: ${GITHUB_TOKEN}
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     volumes:

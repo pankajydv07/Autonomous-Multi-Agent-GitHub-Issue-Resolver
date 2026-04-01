@@ -106,9 +106,11 @@ def create_graph(redis_client) -> LangGraphOrchestrator:
 async def lifespan(app: FastAPI):
     global llm_client, redis_client, orchestrator
     import os
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).parent.parent / ".env")
 
     llm_client = create_llm_client(os.environ.get("NEBIUS_API_KEY", ""))
-    redis_host = os.environ.get("REDIS_HOST", "redis")
+    redis_host = os.environ.get("REDIS_HOST", "localhost")
     redis_port = int(os.environ.get("REDIS_PORT", "6379"))
     redis_client = create_redis_client(host=redis_host, port=redis_port)
     await redis_client.connect()
