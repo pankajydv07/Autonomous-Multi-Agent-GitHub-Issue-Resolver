@@ -66,11 +66,12 @@ export const resolvers = {
   },
 
   Mutation: {
-    startRun: async (_: unknown, args: { issue: string; repoUrl: string }): Promise<StartRunResponse> => {
+    startRun: async (_: unknown, args: { issue: string; repoUrl: string; githubToken?: string }): Promise<StartRunResponse> => {
       try {
         const response = await axios.post(`${ORCHESTRATOR_URL}/api/runs`, {
           issue: args.issue,
           repo_url: args.repoUrl,
+          github_token: args.githubToken || null,
         });
         
         const runId = response.data.id;

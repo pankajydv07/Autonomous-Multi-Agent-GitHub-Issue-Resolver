@@ -18,7 +18,8 @@ import {
   Brain,
   Code,
   FlaskConical,
-  GitPullRequest
+  GitPullRequest,
+  Key
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -85,6 +86,8 @@ export default function Dashboard() {
   const [showForm, setShowForm] = useState(false);
   const [issue, setIssue] = useState('');
   const [repoUrl, setRepoUrl] = useState('');
+  const [githubToken, setGithubToken] = useState('');
+  const [showToken, setShowToken] = useState(false);
   const [liveProgress, setLiveProgress] = useState<Record<string, ProgressEvent[]>>({});
   const [currentAgent, setCurrentAgent] = useState<string>('');
   const progressEndRef = useRef<HTMLDivElement>(null);
@@ -110,6 +113,8 @@ export default function Dashboard() {
       setShowForm(false);
       setIssue('');
       setRepoUrl('');
+      setGithubToken('');
+      setShowToken(false);
       refetch();
       setSelectedRun({
         ...data.startRun,
@@ -157,7 +162,7 @@ export default function Dashboard() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!issue.trim() || !repoUrl.trim()) return;
-    startRun({ variables: { issue: issue.trim(), repoUrl: repoUrl.trim() } });
+    startRun({ variables: { issue: issue.trim(), repoUrl: repoUrl.trim(), githubToken: githubToken.trim() || undefined } });
   };
 
   const formatDate = (date: string) => {
@@ -297,7 +302,7 @@ export default function Dashboard() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50"
-              onClick={() => setShowForm(false)}
+              onClick={() => { setShowForm(false); setGithubToken(''); setShowToken(false); }}
             >
               <motion.div
                 initial={{ scale: 0.95, opacity: 0 }}
@@ -330,10 +335,34 @@ export default function Dashboard() {
                       required
                     />
                   </div>
+                  <div>
+                    <label className="block text-sm text-textMuted mb-1.5 flex items-center gap-1.5">
+                      <Key className="w-3.5 h-3.5" />
+                      GitHub Token
+                      <span className="text-xs text-textMuted/60">(optional)</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showToken ? 'text' : 'password'}
+                        value={githubToken}
+                        onChange={(e) => setGithubToken(e.target.value)}
+                        placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+                        className="w-full px-4 py-3 pr-20 bg-background border border-border rounded-lg focus:outline-none focus:border-primary/50 transition-colors font-mono text-sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowToken((v) => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-textMuted hover:text-text transition-colors px-1"
+                      >
+                        {showToken ? 'Hide' : 'Show'}
+                      </button>
+                    </div>
+                    <p className="text-xs text-textMuted/60 mt-1">Used for private repositories and creating PRs</p>
+                  </div>
                   <div className="flex gap-3 pt-2">
                     <button
                       type="button"
-                      onClick={() => setShowForm(false)}
+                      onClick={() => { setShowForm(false); setGithubToken(''); setShowToken(false); }}
                       className="flex-1 px-4 py-2.5 border border-border rounded-lg hover:bg-surfaceHover transition-colors"
                     >
                       Cancel

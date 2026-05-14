@@ -34,6 +34,7 @@ class AgentState(BaseModel):
     run_id: str
     issue: str
     repo_url: str
+    github_token: str | None = None
     code_context: str = ""
     plan: str = ""
     complexity: Optional[str] = None

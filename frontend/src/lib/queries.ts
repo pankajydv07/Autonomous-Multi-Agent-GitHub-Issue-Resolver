@@ -40,8 +40,8 @@ export const GET_RUN_DETAILS = gql`
 `;
 
 export const START_RUN = gql`
-  mutation StartRun($issue: String!, $repoUrl: String!) {
-    startRun(issue: $issue, repoUrl: $repoUrl) {
+  mutation StartRun($issue: String!, $repoUrl: String!, $githubToken: String) {
+    startRun(issue: $issue, repoUrl: $repoUrl, githubToken: $githubToken) {
       id
       issue
       repoUrl

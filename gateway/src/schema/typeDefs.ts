@@ -62,7 +62,7 @@ export const typeDefs = `#graphql
   }
 
   type Mutation {
-    startRun(issue: String!, repoUrl: String!): AgentRun!
+    startRun(issue: String!, repoUrl: String!, githubToken: String): AgentRun!
     retryRun(runId: ID!): AgentRun!
     cancelRun(runId: ID!): AgentRun!
   }
