@@ -4,7 +4,8 @@ node_modules/
 .agents/
 .specify/
 gateway/dist/
-spec/
+specs/
+tests/
 
 # Python
 __pycache__/
