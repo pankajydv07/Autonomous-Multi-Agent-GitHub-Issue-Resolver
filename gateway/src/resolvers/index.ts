@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { createRedisClient, RedisClient } from './redis.js';
-import { ORCHESTRATOR_URL, AgentRun, TaskLog, StartRunResponse, AgentRunUpdate, AgentProgress } from '../types/index.js';
+import { ORCHESTRATOR_URL, AgentRun, TaskLog, StartRunResponse, AgentRunUpdate, AgentProgress, AgentState } from '../types/index.js';
 import { pubsub } from '../types/index.js';
 
 let redisClient: RedisClient | null = null;
@@ -152,7 +152,7 @@ export const resolvers = {
       (parent.createdAt as string) ||
       (parent.created_at as string) ||
       new Date().toISOString(),
-    state: async (parent: AgentRun): Promise<AgentRun['state']> => {
+    state: async (parent: AgentRun): Promise<AgentState | null> => {
       try {
         const response = await axios.get(`${ORCHESTRATOR_URL}/api/runs/${parent.id}/state`);
         return response.data;

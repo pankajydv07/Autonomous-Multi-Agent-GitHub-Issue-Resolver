@@ -24,7 +24,7 @@ async function startServer() {
     path: '/graphql',
   });
 
-  const serverCleanup = useServer({ schema }, wsServer);
+  const serverCleanup = useServer({ schema }, wsServer as any);
 
   const apolloServer = new ApolloServer({
     schema,
@@ -45,6 +45,10 @@ async function startServer() {
   await apolloServer.start();
 
   app.use('/graphql', cors<cors.CorsRequest>(), express.json(), expressMiddleware(apolloServer));
+
+  app.get('/health', (req, res) => {
+    res.json({ status: 'healthy', service: 'gateway' });
+  });
 
   await new Promise<void>((resolve) => {
     httpServer.listen(PORT, () => resolve());

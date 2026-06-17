@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 import json
 from typing import Any, Optional
 
@@ -96,6 +97,50 @@ class RedisClient:
         if not self.client:
             raise RuntimeError("Redis client not connected")
         await self.client.delete(key)
+
+    async def acquire_lock(self, lock_key: str, val: str, ttl_ms: int) -> bool:
+        if not self.client:
+            raise RuntimeError("Redis client not connected")
+        res = await self.client.set(lock_key, val, nx=True, px=ttl_ms)
+        return bool(res)
+
+    async def release_lock(self, lock_key: str, val: str) -> bool:
+        if not self.client:
+            raise RuntimeError("Redis client not connected")
+        lua = """
+        if redis.call("get", KEYS[1]) == ARGV[1] then
+            return redis.call("del", KEYS[1])
+        else
+            return 0
+        end
+        """
+        res = await self.client.eval(lua, 1, lock_key, val)
+        return bool(res)
+
+    @asynccontextmanager
+    async def lock(self, lock_key: str, val: str, ttl_ms: int):
+        acquired = await self.acquire_lock(lock_key, val, ttl_ms)
+        try:
+            yield acquired
+        finally:
+            if acquired:
+                await self.release_lock(lock_key, val)
+
+    async def enqueue_dlq(self, payload: dict[str, Any]) -> None:
+        if not self.client:
+            raise RuntimeError("Redis client not connected")
+        await self.client.rpush(f"{self.QUEUE_KEY}:dlq", json.dumps(payload))
+        logger.info("dlq_enqueued", run_id=payload.get("task", {}).get("run_id"))
+
+    async def get_queue_depth(self) -> int:
+        if not self.client:
+            return 0
+        return await self.client.llen(self.QUEUE_KEY)
+
+    async def get_dlq_depth(self) -> int:
+        if not self.client:
+            return 0
+        return await self.client.llen(f"{self.QUEUE_KEY}:dlq")
 
 
 def create_redis_client(

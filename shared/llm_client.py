@@ -1,4 +1,5 @@
 import json
+import time
 from typing import Any, AsyncGenerator, Callable, Optional
 
 import httpx
@@ -6,6 +7,43 @@ import structlog
 from pydantic import BaseModel
 
 logger = structlog.get_logger(__name__)
+
+
+class CircuitBreakerError(Exception):
+    """Exception raised when the circuit breaker is open."""
+    pass
+
+
+class CircuitBreaker:
+    def __init__(self, failure_threshold: int = 5, recovery_timeout: float = 60.0) -> None:
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.state = 0  # 0 = CLOSED, 1 = OPEN, 2 = HALF_OPEN
+        self.failure_count = 0
+        self.last_failure_time = 0.0
+
+    def record_success(self) -> None:
+        self.state = 0
+        self.failure_count = 0
+
+    def record_failure(self) -> None:
+        self.failure_count += 1
+        self.last_failure_time = time.time()
+        if self.failure_count >= self.failure_threshold:
+            self.state = 1
+            logger.error("circuit_breaker_opened", failure_count=self.failure_count)
+
+    def check_state(self) -> int:
+        if self.state == 1:
+            if time.time() - self.last_failure_time > self.recovery_timeout:
+                self.state = 2
+                logger.info("circuit_breaker_half_open")
+        return self.state
+
+    def before_call(self) -> None:
+        state = self.check_state()
+        if state == 1:
+            raise CircuitBreakerError("Circuit breaker is OPEN. Fast failing LLM request.")
 
 
 class LLMConfig(BaseModel):
@@ -30,6 +68,7 @@ class LLMClient:
             timeout=config.timeout,
             headers={"Authorization": f"Bearer {config.api_key}"},
         )
+        self.breaker = CircuitBreaker()
 
     async def close(self) -> None:
         await self.client.aclose()
@@ -41,6 +80,7 @@ class LLMClient:
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
     ) -> LLMResponse:
+        self.breaker.before_call()
         full_messages = []
         if system_prompt:
             full_messages.append({"role": "system", "content": system_prompt})
@@ -61,6 +101,8 @@ class LLMClient:
                 response.raise_for_status()
                 data = response.json()
 
+                self.breaker.record_success()
+
                 content = data["choices"][0]["message"]["content"]
                 return LLMResponse(
                     content=content,
@@ -68,12 +110,15 @@ class LLMClient:
                     usage=data.get("usage"),
                 )
             except httpx.HTTPStatusError as e:
+                if e.response.status_code >= 500 or e.response.status_code == 429:
+                    self.breaker.record_failure()
                 logger.warning(
                     "llm_http_error", attempt=attempt, status=e.response.status_code
                 )
                 if attempt == self.config.max_retries - 1:
                     raise
             except httpx.RequestError as e:
+                self.breaker.record_failure()
                 logger.warning("llm_request_error", attempt=attempt, error=str(e))
                 if attempt == self.config.max_retries - 1:
                     raise
@@ -88,6 +133,7 @@ class LLMClient:
         max_tokens: Optional[int] = None,
         on_token: Optional[Callable[[str], Any]] = None,
     ) -> AsyncGenerator[str, None]:
+        self.breaker.before_call()
         full_messages = []
         if system_prompt:
             full_messages.append({"role": "system", "content": system_prompt})
@@ -103,35 +149,46 @@ class LLMClient:
         if max_tokens:
             payload["max_tokens"] = max_tokens
 
-        async with self.client.stream(
-            "POST", "chat/completions", json=payload
-        ) as response:
-            response.raise_for_status()
-            accumulated_content = ""
+        try:
+            async with self.client.stream(
+                "POST", "chat/completions", json=payload
+            ) as response:
+                response.raise_for_status()
+                self.breaker.record_success()
+                accumulated_content = ""
 
-            async for line in response.aiter_lines():
-                if line.startswith("data: "):
-                    data = line[6:]
-                    if data == "[DONE]":
-                        break
-                    try:
-                        chunk = json.loads(data)
-                        delta = chunk.get("choices", [{}])[0].get("delta", {})
-                        token = delta.get("content", "")
-                        if token:
-                            accumulated_content += token
-                            if on_token:
-                                import inspect
+                async for line in response.aiter_lines():
+                    if line.startswith("data: "):
+                        data = line[6:]
+                        if data == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(data)
+                            delta = chunk.get("choices", [{}])[0].get("delta", {})
+                            token = delta.get("content", "")
+                            if token:
+                                accumulated_content += token
+                                if on_token:
+                                    import inspect
 
-                                if inspect.iscoroutinefunction(on_token):
-                                    await on_token(token)
-                                else:
-                                    on_token(token)
-                            yield token
-                    except json.JSONDecodeError:
-                        continue
+                                    if inspect.iscoroutinefunction(on_token):
+                                        await on_token(token)
+                                    else:
+                                        on_token(token)
+                                yield token
+                        except json.JSONDecodeError:
+                            continue
 
-            logger.info("llm_stream_complete", tokens=len(accumulated_content))
+                logger.info("llm_stream_complete", tokens=len(accumulated_content))
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code >= 500 or e.response.status_code == 429:
+                self.breaker.record_failure()
+            logger.warning("llm_stream_http_error", status=e.response.status_code)
+            raise
+        except httpx.RequestError as e:
+            self.breaker.record_failure()
+            logger.warning("llm_stream_request_error", error=str(e))
+            raise
 
     async def chat_json(
         self,
@@ -156,3 +213,4 @@ class LLMClient:
 
 def create_llm_client(api_key: str) -> LLMClient:
     return LLMClient(LLMConfig(api_key=api_key))
+

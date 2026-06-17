@@ -1,5 +1,18 @@
 node_modules/
 .next/
 .env
-.agent/
+.agents/
+.specify/
 gateway/dist/
+spec/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+

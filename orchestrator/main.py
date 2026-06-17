@@ -125,29 +125,54 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Agent Orchestrator", lifespan=lifespan)
 
 
+from datetime import datetime
+from shared.metrics import REGISTRY
+from prometheus_client import generate_latest
+from fastapi import Response
+
 @app.post("/api/runs", response_model=RunResponse)
 async def start_run(request: StartRunRequest):
     run_id = str(uuid.uuid4())
     state = AgentState(run_id=run_id, issue=request.issue, repo_url=request.repo_url)
+    state.status = RunStatus.PENDING
 
-    runs_store[run_id] = state
-    logger.info("run_started", run_id=run_id)
-
-    result = await orchestrator.execute(state)
-    runs_store[run_id] = result
+    # Save state to Redis cache
+    state_key = f"run:state:{run_id}"
+    await redis_client.cache_set(state_key, state.model_dump())
+    await redis_client.client.sadd("all_runs", run_id)
+    
+    # Enqueue task
+    task_payload = {
+        "run_id": run_id,
+        "issue": request.issue,
+        "repo_url": request.repo_url,
+        "retry_count": 0,
+        "max_retries": 3,
+        "enqueue_time": datetime.utcnow().isoformat()
+    }
+    await redis_client.enqueue_task(task_payload)
+    logger.info("run_enqueued", run_id=run_id)
 
     return RunResponse(
-        id=result.run_id,
-        issue=result.issue,
-        repo_url=result.repo_url,
-        status=result.status.value,
-        created_at=result.created_at.isoformat(),
+        id=state.run_id,
+        issue=state.issue,
+        repo_url=state.repo_url,
+        status=state.status.value,
+        created_at=state.created_at.isoformat(),
     )
 
 
 @app.get("/api/runs", response_model=list[RunResponse])
 async def get_runs(limit: int = 50, offset: int = 0):
-    runs = list(runs_store.values())[offset : offset + limit]
+    run_ids = await redis_client.client.smembers("all_runs")
+    runs = []
+    for r_id in run_ids:
+        state_json = await redis_client.cache_get(f"run:state:{r_id}")
+        if state_json:
+            runs.append(AgentState.model_validate(state_json))
+            
+    runs.sort(key=lambda x: x.created_at, reverse=True)
+    runs = runs[offset : offset + limit]
     return [
         RunResponse(
             id=r.run_id,
@@ -162,9 +187,10 @@ async def get_runs(limit: int = 50, offset: int = 0):
 
 @app.get("/api/runs/{run_id}")
 async def get_run_details(run_id: str):
-    if run_id not in runs_store:
+    state_json = await redis_client.cache_get(f"run:state:{run_id}")
+    if not state_json:
         raise HTTPException(status_code=404, detail="Run not found")
-    state = runs_store[run_id]
+    state = AgentState.model_validate(state_json)
     return {
         "id": state.run_id,
         "issue": state.issue,
@@ -181,42 +207,68 @@ async def get_run_details(run_id: str):
     }
 
 
+@app.get("/api/runs/{run_id}/state")
+async def get_run_state(run_id: str):
+    state_json = await redis_client.cache_get(f"run:state:{run_id}")
+    if not state_json:
+        raise HTTPException(status_code=404, detail="Run not found")
+    state = AgentState.model_validate(state_json)
+    return state.model_dump()
+
+
 @app.get("/api/runs/{run_id}/logs")
 async def get_run_logs(run_id: str):
-    if run_id not in runs_store:
+    state_json = await redis_client.cache_get(f"run:state:{run_id}")
+    if not state_json:
         raise HTTPException(status_code=404, detail="Run not found")
-    return runs_store[run_id].logs
+    state = AgentState.model_validate(state_json)
+    return state.logs
 
 
 @app.post("/api/runs/{run_id}/retry")
 async def retry_run(run_id: str):
-    if run_id not in runs_store:
+    state_json = await redis_client.cache_get(f"run:state:{run_id}")
+    if not state_json:
         raise HTTPException(status_code=404, detail="Run not found")
 
-    state = runs_store[run_id]
+    state = AgentState.model_validate(state_json)
     state.status = RunStatus.PENDING
     state.error = None
+    state.add_log("orchestrator", "Retry triggered by user")
+    
+    await redis_client.cache_set(f"run:state:{run_id}", state.model_dump())
 
-    result = await orchestrator.execute(state)
-    runs_store[run_id] = result
+    # Enqueue task
+    task_payload = {
+        "run_id": run_id,
+        "issue": state.issue,
+        "repo_url": state.repo_url,
+        "retry_count": 0,
+        "max_retries": 3,
+        "enqueue_time": datetime.utcnow().isoformat()
+    }
+    await redis_client.enqueue_task(task_payload)
+    logger.info("retry_enqueued", run_id=run_id)
 
     return RunResponse(
-        id=result.run_id,
-        issue=result.issue,
-        repo_url=result.repo_url,
-        status=result.status.value,
-        created_at=result.created_at.isoformat(),
+        id=state.run_id,
+        issue=state.issue,
+        repo_url=state.repo_url,
+        status=state.status.value,
+        created_at=state.created_at.isoformat(),
     )
 
 
 @app.post("/api/runs/{run_id}/cancel")
 async def cancel_run(run_id: str):
-    if run_id not in runs_store:
+    state_json = await redis_client.cache_get(f"run:state:{run_id}")
+    if not state_json:
         raise HTTPException(status_code=404, detail="Run not found")
 
-    state = runs_store[run_id]
+    state = AgentState.model_validate(state_json)
     state.status = RunStatus.CANCELLED
     state.add_log("orchestrator", "Run cancelled by user")
+    await redis_client.cache_set(f"run:state:{run_id}", state.model_dump())
 
     return RunResponse(
         id=state.run_id,
@@ -229,4 +281,27 @@ async def cancel_run(run_id: str):
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy"}
+    db_ok = "up"
+    redis_ok = "up" if redis_client and redis_client.client else "down"
+    return {
+        "status": "healthy" if redis_ok == "up" else "unhealthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "services": {
+            "database": db_ok,
+            "redis": redis_ok
+        }
+    }
+
+
+@app.get("/metrics")
+async def metrics():
+    # Update quick stats before returning
+    if redis_client:
+        from shared.metrics import queue_depth, dlq_depth
+        q_len = await redis_client.get_queue_depth()
+        queue_depth.labels(queue_name="agent_tasks").set(q_len)
+        dlq_len = await redis_client.get_dlq_depth()
+        dlq_depth.labels(queue_name="agent_tasks").set(dlq_len)
+        
+    return Response(content=generate_latest(REGISTRY), media_type="text/plain")
+

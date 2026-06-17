@@ -81,6 +81,49 @@ services:
     depends_on:
       - gateway
 
+  worker:
+    build:
+      context: .
+      dockerfile: orchestrator/Dockerfile
+    command: ["python", "-m", "worker"]
+    environment:
+      DATABASE_URL: postgresql://postgres:pankaj@postgres:5432/agent_orchestrator
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      NEBIUS_API_KEY: ${NEBIUS_API_KEY}
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - /tmp/agent-repos:/repos
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: agent-orchestrator-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+
+  grafana:
+    image: grafana/grafana-oss:latest
+    container_name: agent-orchestrator-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./grafana/provisioning/dashboards/dashboard.yml:/etc/grafana/provisioning/dashboards/dashboard.yml
+      - ./grafana/provisioning/dashboards/worker-metrics.json:/var/lib/grafana/dashboards/worker-metrics.json
+    depends_on:
+      - prometheus
+
 volumes:
   postgres_data:
   redis_data:
+

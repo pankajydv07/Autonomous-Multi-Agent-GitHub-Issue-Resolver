@@ -251,3 +251,10 @@ Before marking any task complete, verify:
 - [ ] New agent has unit tests covering the `run()` method
 - [ ] No hardcoded secrets or API keys
 - [ ] `python .agent/scripts/checklist.py .` returns success
+
+<!-- SPECKIT START -->
+For additional context about technologies to be used, project structure,
+shell commands, and other important information, read the current plan:
+[plan.md](file:///run/media/pankaj/PANKAJ/VScode/githubissue/Autonomous-Multi-Agent-GitHub-Issue-Resolver/specs/001-distributed-reliability-execution/plan.md)
+<!-- SPECKIT END -->
+

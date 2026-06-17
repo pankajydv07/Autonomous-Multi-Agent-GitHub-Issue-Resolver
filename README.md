@@ -302,6 +302,21 @@ class CustomTool:
     def execute(self, **kwargs):
         # Tool implementation
         pass
+## ⛓️ Distributed Architecture & Observability
+
+To support production-grade reliability and high-throughput execution, this project features a distributed task queue architecture.
+
+### Key Components
+
+- **Task Queue (Redis Lists)**: Issue runs are enqueued to a Redis task queue rather than processed synchronously.
+- **Scale-Out Worker Pool**: Launch multiple worker container processes (`worker` service) to pull tasks from the queue concurrently.
+- **Distributed Locking**: Prevent concurrent worker executions on the same task/run ID using a Redis-based lock (`SET nx px`).
+- **Resilient Retry Queue**: Exponential backoff retry handling for transient API failures.
+- **Dead Letter Queue (DLQ)**: Tasks that exhaust their maximum retry counts are routed to the DLQ (`agent_tasks:dlq`) with full error stack traces for operator auditing.
+- **Circuit Breakers**: A custom in-memory circuit breaker wraps the LLM client, failing fast during API outages.
+- **Graceful Shutdown**: Workers handle `SIGTERM` and `SIGINT` signals, completing active tasks before exiting.
+- **Prometheus & Grafana Observability**: Exposes structured metrics `/metrics` tracking active workers, queue depth, throughput, latencies, and circuit breaker states. Visual dashboards are provisioned out of the box in Grafana.
+
 ## 🐛 Troubleshooting
 
 ### Common Issues
