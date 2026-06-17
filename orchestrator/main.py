@@ -140,7 +140,7 @@ async def start_run(request: StartRunRequest):
     state_key = f"run:state:{run_id}"
     await redis_client.cache_set(state_key, state.model_dump())
     await redis_client.client.sadd("all_runs", run_id)
-    
+
     # Enqueue task
     task_payload = {
         "run_id": run_id,
@@ -170,7 +170,7 @@ async def get_runs(limit: int = 50, offset: int = 0):
         state_json = await redis_client.cache_get(f"run:state:{r_id}")
         if state_json:
             runs.append(AgentState.model_validate(state_json))
-            
+
     runs.sort(key=lambda x: x.created_at, reverse=True)
     runs = runs[offset : offset + limit]
     return [
@@ -235,7 +235,7 @@ async def retry_run(run_id: str):
     state.status = RunStatus.PENDING
     state.error = None
     state.add_log("orchestrator", "Retry triggered by user")
-    
+
     await redis_client.cache_set(f"run:state:{run_id}", state.model_dump())
 
     # Enqueue task
@@ -302,6 +302,6 @@ async def metrics():
         queue_depth.labels(queue_name="agent_tasks").set(q_len)
         dlq_len = await redis_client.get_dlq_depth()
         dlq_depth.labels(queue_name="agent_tasks").set(dlq_len)
-        
+
     return Response(content=generate_latest(REGISTRY), media_type="text/plain")
 

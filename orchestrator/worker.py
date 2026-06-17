@@ -1,6 +1,5 @@
 import asyncio
 import datetime
-import json
 import os
 import signal
 import sys
@@ -16,7 +15,7 @@ from prometheus_client import start_http_server
 
 # Import main to reuse graph structure and configure its globals
 import main
-from shared.llm_client import create_llm_client, CircuitBreakerError
+from shared.llm_client import create_llm_client
 from shared.redis_client import create_redis_client
 from shared.metrics import (
     REGISTRY,
@@ -74,7 +73,7 @@ async def process_task(task_payload: dict, orchestrator) -> None:
         # Load state from Redis
         state_key = f"run:state:{run_id}"
         state_json = await main.redis_client.cache_get(state_key)
-        
+
         if state_json:
             state = AgentState.model_validate(state_json)
         else:
@@ -94,7 +93,7 @@ async def process_task(task_payload: dict, orchestrator) -> None:
 
         # Save back to Redis
         await main.redis_client.cache_set(state_key, result.model_dump())
-        
+
         if result.status == RunStatus.COMPLETED:
             task_execution_total.labels(status="success").inc()
             logger.info("task_completed_successfully", run_id=run_id)
@@ -110,11 +109,11 @@ async def process_task(task_payload: dict, orchestrator) -> None:
         if retry_count < max_retries:
             next_retry = retry_count + 1
             task_retry_total.labels(attempt=str(next_retry)).inc()
-            
+
             # Calculate backoff
             backoff_delay = 1.0 * (2.0 ** retry_count)
             logger.info("scheduling_retry", run_id=run_id, next_attempt=next_retry, delay_seconds=backoff_delay)
-            
+
             # Wait backoff delay
             await asyncio.sleep(backoff_delay)
 
@@ -154,7 +153,7 @@ async def process_task(task_payload: dict, orchestrator) -> None:
 
 async def main_loop():
     logger.info("worker_starting", worker_id=worker_id)
-    
+
     # Setup signal handlers
     if sys.platform != 'win32':
         loop = asyncio.get_running_loop()
@@ -198,7 +197,7 @@ async def main_loop():
             if task_payload:
                 logger.info("task_dequeued", run_id=task_payload.get("run_id"))
                 await process_task(task_payload, orchestrator)
-            
+
             # Yield to other tasks
             await asyncio.sleep(0.1)
 
